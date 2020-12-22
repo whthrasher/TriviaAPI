@@ -64,20 +64,28 @@ def create_app(test_config=None):
 
     @app.route('/questions/<int:question_id>', methods=['DELETE'])
     def remove_question(question_id):
-        question = Question.query.get(question_id)
-        question.delete()
+        try:
+            question = Question.query.get(question_id)
+            if question is None:
+                abort(404)
+            question.delete()
 
-        return jsonify({
-            'success': True,
-            'deleted': question_id
-            })
-
+            return jsonify({
+                'success': True,
+                'deleted': question_id
+                })
+        except:
+            abort(422)
     @app.route('/questions', methods=['POST'])
     def add_question():
-        q = request.get_json()['question']
-        a = request.get_json()['answer']
-        c = request.get_json()['category']
-        d = request.get_json()['difficulty']
+        body = request.get_json()
+        if not request.get_json():
+            abort(400)
+
+        q = body['question']
+        a = body['answer']
+        c = body['category']
+        d = body['difficulty']
 
         question = Question(question=q, answer=a, category=c, difficulty=d)
         Question.insert(question)
@@ -88,7 +96,10 @@ def create_app(test_config=None):
 
     @app.route('/questions/search', methods=['POST'])
     def search_questions():
-        search_str = request.get_json()['searchTerm']
+        body = request.get_json()
+        if not body:
+            abort(400)
+        search_str = body['searchTerm']
         question_query = Question.query.filter(Question.question.ilike
                                                ('%{}%'.format(search_str))
                                                ).all()
@@ -101,9 +112,10 @@ def create_app(test_config=None):
             'currentCategory': None
         })
 
-    @app.route('/categories/<int:category_id>/questions', methods=['GET'])
-    def retrieve_questions_by_category(category_id):
-        selection = Question.query.filter_by(category=category_id)
+    @app.route('/categories/<int:id>/questions', methods=['GET'])
+    def retrieve_questions_by_category(id):
+        category_id = id+1
+        selection = Question.query.filter(Question.category == category_id)
         current_questions = paginate_questions(request, selection)
 
         return jsonify({
@@ -115,7 +127,7 @@ def create_app(test_config=None):
 
     @app.route('/quizzes', methods=['POST'])
     def retrieve_quiz():
-        quiz_category = request.get_json()['quiz_category']['id']
+        quiz_category = int(request.get_json()['quiz_category']['id'])
         previous_questions = request.get_json()['previous_questions']
 
         if quiz_category == 0:
@@ -123,19 +135,25 @@ def create_app(test_config=None):
                 Question.id.notin_(previous_questions)).all()
         else:
             questions_query = Question.query.filter(
-                Question.category == quiz_category,
+                Question.category == int(quiz_category)+1,
                 Question.id.notin_(previous_questions)).all()
 
         length_of_available_question = len(questions_query)
+        print(length_of_available_question)
 
-        return jsonify({
-            'success': True,
-            'question': Question.format(
+        if length_of_available_question == 0:
+            question = None
+        else:
+            question = Question.format(
                             questions_query[random.randrange(
                                 0,
                                 length_of_available_question
                             )]
                         )
+
+        return jsonify({
+            'success': True,
+            'question': question
         })
 
     @app.errorhandler(400)
@@ -151,8 +169,10 @@ def create_app(test_config=None):
         return jsonify({
             "success": False,
             "error": 404,
-            "message": "Not found"
+            "message": "Not Found"
         }), 404
+
+
 
     @app.errorhandler(422)
     def not_found(error):
